@@ -1,0 +1,10 @@
+// file with just a few fix points to test mix of estimated and provided fix points
+{
+    projection: 'epsg:3006', // SWEREF99 TM
+    fix_points: [
+	[7216067, 590629, 441, 'max', 'norrberg'],
+	[7227629.9375, 581530.125, 632.22, 'max', 'kaskeluoktliden'],
+	[7233560, 576528, 405, 'max', 'levertjärnen'],
+	[7224004, 584880, 581, 'max', 'vallträsktoppen'],
+    ]
+}

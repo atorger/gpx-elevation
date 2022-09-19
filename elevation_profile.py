@@ -1,12 +1,11 @@
 import os
 import math
 from functools import cmp_to_key
-from sortedcontainers import SortedDict
 from dataclasses import dataclass
-from itertools import islice
 from pyproj import Transformer
+from sortedcontainers import SortedDict
 
-from misc import find_closest, get_angle, apply_lowpass_filter, sample_curve, line_intersection, get_clustered_average, dist2d, best_utm, read_track, get_center_lat_lon, FixPoint, Point
+from misc import find_closest, apply_lowpass_filter, sample_curve, line_intersection, get_clustered_average, dist2d, best_utm, read_track, get_center_lat_lon, FixPoint, Point
 from twodimsearch import TwoDimSearch
 
 def join_sampled_segments(seg0, seg0_end_dist, seg1, seg1_start_dist, sampling_step):
@@ -67,36 +66,6 @@ def is_minima(profile, idx):
     idx_lo, idx_hi = get_minmax_span(profile, idx)
     return idx_lo > 0 and profile[idx_lo] > profile[idx] and idx_hi < len(profile) and profile[idx_hi] > profile[idx]
 
-def get_nearest_perpendicular(track, track_db, fp, track_scan_dist):
-    # get track points nearby the fixpoint
-    refs = track_db.find_all_within((fp.x, fp.y), 2 * track_scan_dist)
-    if len(refs) == 0:
-        return None
-    idxs = sorted(list(refs))
-
-    # find the trackpoint that is nearest the fixpoint, with perpendicular search to track direction
-    best_match = None
-    del idxs[-1]
-    side_scan_dist = 20.0
-    for idx in idxs:
-        tp1 = track[idx]
-        tp2 = track[idx+1]
-        angle = get_angle(tp1, tp2)
-        angle = ((angle + 90) % 360) * math.pi / 180
-        x1 = fp.x + math.cos(angle) * side_scan_dist
-        y1 = fp.y + math.sin(angle) * side_scan_dist
-        x2 = fp.x - math.cos(angle) * side_scan_dist
-        y2 = fp.y - math.sin(angle) * side_scan_dist
-        p1 = Point(x1, y1)
-        p2 = Point(x2, y2)
-        ip = line_intersection(tp1, tp2, p1, p2)
-        if ip is None:
-            continue
-        dist = dist2d(ip, fp)
-        if best_match is None or dist < best_match[1]:
-            best_match = (idx, dist, ip)
-    return best_match
-
 def get_scan_range_for_fix(ref_track, profile_start_dist, profile, sampling_step, fp, track_scan_dist):
     side_scan_dist = 20.0
     point = ref_track.get_nearest_perpendicular_point(fp, side_scan_dist)
@@ -110,8 +79,7 @@ def get_scan_range_for_fix(ref_track, profile_start_dist, profile, sampling_step
     end_dist = ref_dist - profile_start_dist + track_scan_dist
     start_idx = math.floor(start_dist / sampling_step)
     end_idx = math.floor(end_dist / sampling_step) + 1
-    if start_idx < 0:
-        start_idx = 0
+    start_idx = max(start_idx, 0)
     if end_idx > len(profile)-2:
         end_idx = len(profile)-2
     return (start_idx, end_idx, ref_dist - profile_start_dist)
@@ -163,10 +131,9 @@ def get_best_match_for_minmax_fix(ref_track, start_dist, profile, sampling_step,
 
     if fp.fixtype == 'max':
         return max_ele_idx
-    elif fp.fixtype == 'min':
+    if fp.fixtype == 'min':
         return min_ele_idx
-    else:
-        raise RuntimeError(f'unknown/unexpected fixtype "{fp.fixtype}"')
+    raise RuntimeError(f'unknown/unexpected fixtype "{fp.fixtype}"')
 
 @dataclass
 class TrackPoint:
@@ -186,12 +153,10 @@ class ProfileSegment:
 
 class ElevationProfile:
 
-    _plot_files = dict()
+    _plot_files = {}
 
     def __init__(self, filename):
 
-        # TODO: if we really want to be able to change reference track later, we need to do init with generic
-        # projection
         print(f'Loading {filename}')
         track = read_track(filename)
 
@@ -255,9 +220,6 @@ class ElevationProfile:
         for idx, point in enumerate(track):
             self._track_db.insert((point.x, point.y), idx)
 
-    def __len__(self):
-        return len(self._profile)
-
     def _find_local_minmax_points(self, ps):
         minmax_pos = []
         for idx in range(1, len(ps.lowpass_profile)-2):
@@ -289,7 +251,7 @@ class ElevationProfile:
             pr = ps.profile
         for fpset in fp_db:
             fp = next(iter(fpset))
-            if fp.fixtype != 'max' and fp.fixtype != 'min':
+            if fp.fixtype not in ('max', 'min'):
                 continue
             idx = get_best_match_for_minmax_fix(ref_track, ps.start_dist, pr, sampling_step, fp, 100.0)
             if idx is None:
@@ -365,7 +327,7 @@ class ElevationProfile:
 
     def set_reference_track(self, ref_track, fp_db, side_scan_dist, sampling_step):
 
-        print(f'Making profile for reference track')
+        print('Making profile for reference track')
 
         self._sampling_step = sampling_step
         self._ref_track = ref_track
@@ -389,7 +351,7 @@ class ElevationProfile:
 
         profile = list(map(lambda tp: (tp.dist, self._get_elevation(tp.dist)), ref_track))
         for idx, p in enumerate(profile):
-            if idx > 0 and idx < len(profile) and p[1] != None and profile[idx-1][1] is None and profile[idx+1][1] is None:
+            if 0 < idx < len(profile) and p[1] is not None and profile[idx-1][1] is None and profile[idx+1][1] is None:
                 print(f'At least two consecutive points with elevation required, ignoring point at {profile[idx][0]}')
                 profile[idx] = (profile[idx][0], None)
 
@@ -473,7 +435,7 @@ class ElevationProfile:
         p1 = Point(x1, y1)
         p2 = Point(x2, y2)
 
-        closest_match = None
+        closest_match = (None, None)
         for idx in refs:
             if idx < len(self._track)-1:
                 idx1 = idx
@@ -492,7 +454,7 @@ class ElevationProfile:
                 mix = dist2d(ip, tp1) / dist2d(tp2, tp1)
                 ele = tp1.elevation * (1 - mix) + tp2.elevation * mix
                 dist = dist2d(ip, tp)
-                if closest_match is None or closest_match[0] > dist:
+                if closest_match[0] is None or closest_match[0] > dist:
                     closest_match = (dist, ele)
         if closest_match is None:
             return None
@@ -503,14 +465,14 @@ class ElevationProfile:
 
     def _get_datapoint(self, get_sampled_profile, ref_track_dist):
         d = ref_track_dist
-        match = False
+        match = None
         for ps in self._profile_segments:
-            if d >= ps.hvcorr_start_dist and d < ps.hvcorr_end_dist:
-                match = True
+            if ps.hvcorr_start_dist <= d < ps.hvcorr_end_dist:
+                match = ps
                 break
-        if not match:
+        if match is None:
             return None
-
+        ps = match
         sampled_profile = get_sampled_profile(ps)
         d -= ps.hvcorr_start_dist
         idx = math.floor(d / self._sampling_step)
@@ -594,10 +556,10 @@ class ElevationProfile:
         clustered_mmpos = SortedDict()
         while True:
             remaining_mmpos = SortedDict()
-            current_minmax = None
+            current_minmax = (None, None, None)
             for idx, items in mmpos.items():
                 for (minmax, ele) in items:
-                    if current_minmax is None or idx >= current_minmax[0] + window_len:
+                    if current_minmax[0] is None or idx >= current_minmax[0] + window_len:
                         current_minmax = (idx, minmax)
                         clustered_mmpos[idx] = [(idx, minmax, ele)]
                     elif minmax != current_minmax[1]:
@@ -717,10 +679,8 @@ class ElevationProfile:
                 mmlist = ElevationProfile._match_minmax_fixpoints(ps, fp_db, ref_track, profile._sampling_step, lowpass=True)
                 fp_minmax_pos_list += mmlist
 
-                start_idx = ps.start_dist / profile._sampling_step
                 for val in mmlist:
                     fp = val[2]
-                    dst_idx = fp.dist / profile._sampling_step
                     src_idx = val[0]
                     corr_dist = src_idx * profile._sampling_step - fp.dist
                     fp_horiz_pos_list.append((src_idx, corr_dist, fp))

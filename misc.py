@@ -1,8 +1,5 @@
 import math
-import scipy.signal
 import statistics
-import gpxpy
-import gpxpy.gpx
 import re
 import os
 import numpy as np
@@ -11,6 +8,9 @@ from shapely import geometry
 from itertools import islice
 from sortedcontainers import SortedDict
 from dataclasses import dataclass
+import scipy.signal
+import gpxpy
+import gpxpy.gpx
 
 @dataclass
 class Point:
@@ -80,7 +80,7 @@ def sample_curve(curve, step):
         x += step
     return segments
 
-def get_clustered_average(values, spans=[1.5, 2, 2.5, 3.0, 5.0]):
+def get_clustered_average(values, spans):
 
     def get_average_within_span(sorted_values, span):
         # get average of the largest group which is within span from eachother
@@ -203,14 +203,12 @@ def read_track(filename):
         ele = np.array(re.findall(r'<ele>([^\<]+)',data),dtype=float)
 
         return list(zip(lat,lon,ele))
-        return list(map(make_track_point, zip(lat,lon,ele)))
-    elif ext.lower() == '.csv':
+    if ext.lower() == '.csv':
         with open(filename) as f:
             reader = csv.reader(f)
             return list(map(lambda item: (float(item[0]), float(item[1]), float(item[2])), reader))
-    else:
-        printf(f'Unknown/unsupported extension {ext}')
-        assert(False)
+    print(f'Unknown/unsupported extension {ext}')
+    assert False
 
 def write_gpx(filename, track, transform):
     gpx = gpxpy.gpx.GPX()

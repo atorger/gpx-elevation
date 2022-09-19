@@ -1,8 +1,7 @@
-import collections
 import bisect
 import math
-from pyproj import Transformer
 from dataclasses import dataclass
+from pyproj import Transformer
 
 from twodimsearch import TwoDimSearch
 from misc import line_intersection, best_utm, read_track, get_center_lat_lon, dist2d, get_angle, Point
@@ -34,12 +33,6 @@ class ReferenceTrack:
             return TrackPoint(x, y, elevation=item[2])
 
         track = list(map(make_track_point, track))
-
-        print('Log reference profile')
-        ReferenceTrack._calculate_track_angles_and_dist(track)
-        with open('profile-ref.txt', 'w') as f:
-            for point in track:
-                f.write(f'{point.dist} {point.elevation}\n')
 
         print('Merging coordinates unreasonably close')
         new_track = []
@@ -84,6 +77,7 @@ class ReferenceTrack:
         print('Calculating angles and distance in each point')
         ReferenceTrack._calculate_track_angles_and_dist(track)
 
+        self._iter = None
         self._track = track
         self._track_db = TwoDimSearch()
         for idx, point in enumerate(track):
@@ -147,7 +141,7 @@ class ReferenceTrack:
             return None
         idxs = sorted(list(refs))
 
-        best_match = None
+        best_match = (None, None, None)
         for idx in idxs:
             if idx == len(self._track)-1:
                 continue
@@ -166,7 +160,7 @@ class ReferenceTrack:
                 continue
             ipdist = dist2d(ip, point)
             mix = dist2d(ip, tp1) / dist2d(tp2, tp1)
-            if best_match is None or ipdist < best_match[2]:
+            if best_match[0] is None or ipdist < best_match[2]:
                 track_dist = self._track[idx].dist + mix * (self._track[idx+1].dist - self._track[idx].dist)
                 best_match = (ip, track_dist, ipdist)
         if best_match is None:

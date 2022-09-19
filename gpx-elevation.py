@@ -3,11 +3,9 @@
 import argparse
 import pathlib
 import math
-import statistics
 import os
 import sys
 import pyjson5
-from dataclasses import dataclass
 from pygnuplot import gnuplot
 from rdp import rdp
 from pyproj import Transformer
@@ -114,8 +112,9 @@ def main():
         for [IDX={seg_base}:{seg_end}] 'fp' index IDX u 1:2 with l lt IDX+1 lw 2 notitle, \
         for [IDX={seg_base}:{seg_end}] 'cp' index IDX u 1:2 with l lt IDX+1 notitle"
         if len(fp_db) > 0:
-            plot_cmd += ", 'fixpoints' w xerrorbars lc 'red' title 'provided fixpoints'"
-        plot_cmd += ", 'derived_minmax' w yerrorbars"
+            plot_cmd += ", 'fixpoints' w xerrorbars lc 'red' title 'provided fix points'"
+        if did_apply_estimated:
+            plot_cmd += ", 'derived_minmax' w yerrorbars title 'derived fix points'"
         gplot.cmd(plot_cmd)
 
     ElevationProfile.close_plot_files()
@@ -152,14 +151,19 @@ def main():
         with open(os.path.join(args.plot_dir, 'profile1'), 'w') as f:
             for idx, ele in enumerate(lowpass_profile):
                 f.write(f'{start_dist+idx*args.sampling_step}, {ele}\n')
-        gplot.cmd(f"plot \
+        plot_cmd = f"plot \
         for [IDX={seg_base}:{seg_end}] 'cp' index IDX u 1:2 with l lt IDX+1 notitle, \
-        'profile1' w l lc rgb '#88333333' lw 4, 'profile0' w l lc rgb '#333333', \
-        'fixpoints' w xerrorbars lc 'red' title 'provided fixpoints', 'derived_minmax' w yerrorbars")
+        'profile1' w l lc rgb '#88333333' lw 4 title 'finished profile', \
+        'profile0' w l lc rgb '#333333' title 'raw profile'"
+        if len(fp_db) > 0:
+            plot_cmd += ", 'fixpoints' w xerrorbars lc 'red' title 'provided fix points'"
+        if did_apply_estimated:
+            plot_cmd += ", 'derived_minmax' w yerrorbars title 'derived fix points'"
+        gplot.cmd(plot_cmd)
 
     print('Deriving elevation for each point using database')
     rdp_list = []
-    distmap = dict()
+    distmap = {}
     for tp in ref_track:
         dist = tp.dist - start_dist
         idx = math.floor(dist / args.sampling_step)
@@ -179,12 +183,22 @@ def main():
     elevation_gain = calculate_elevation_gain(rdp_result, lambda x: x[2])
     print(f'Profile elevation gain: {round(elevation_gain,1)} meters for simplified profile')
 
-    print('Write profile')
-    with open('profile', 'w') as f:
-        for point in rdp_result:
-            dist = distmap[(point[0], point[1], point[2])]
-            ele = round(point[2], 1)
-            f.write(f'{dist}, {ele}\n')
+    if do_plot:
+        with open(os.path.join(args.plot_dir, 'profile2'), 'w') as f:
+            for point in rdp_result:
+                dist = distmap[(point[0], point[1], point[2])]
+                ele = round(point[2], 1)
+                f.write(f'{dist}, {ele}\n')
+        plot_cmd = f"plot \
+        for [IDX={seg_base}:{seg_end}] 'cp' index IDX u 1:2 with l lt IDX+1 notitle, \
+        'profile1' w l lc rgb '#88333333' lw 4 title 'finished profile', \
+        'profile0' w l lc rgb '#333333' title 'raw profile', \
+        'profile2' w l lc rgb '#000000' dashtype 2 title 'GPX stored profile'"
+        if len(fp_db) > 0:
+            plot_cmd += ", 'fixpoints' w xerrorbars lc 'red' title 'provided fix points'"
+        if did_apply_estimated:
+            plot_cmd += ", 'derived_minmax' w yerrorbars title 'derived fix points'"
+        gplot.cmd(plot_cmd)
 
     print(f'Writing GPX to {args.output}')
     write_gpx(args.output, rdp_result, Transformer.from_crs(ref_track.utm_epsg_name(), 'epsg:4326').transform)
