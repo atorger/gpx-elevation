@@ -1,0 +1,118 @@
+// Fix points are positions on the road with known elevation. These can be had from LIDAR
+// measurements or RTK-GPS for example.
+//
+// There are three point fix point types
+// - 'min' or 'max':
+//    - Only use local minima/maxima, or flat sections (say +/- 0.5 meters) at least 200 meters long
+//    - At least 100 meters away from any other exceeding local minima/maxima
+//    - Not used for horizontal alignment, so exact positioning is not critical, but the provided
+//      elevation should point out the actual max/min
+// - 'slope':
+//    - Used for horizontal alignment
+//    - Preferably in center of a even slope section
+//
+// Accuracy better than +/- 0.5 meter is probably overkill
+//
+{
+    // default projection is WGS84 / epsg:4326
+    projection: 'epsg:3006', // SWEREF99 TM
+    fix_points: [
+	[7222603.625, 591393.75, 396.13, 'slope', 'just innan mål ensamheten'],
+	[7222450.625, 591322.75, 396.56, 'min', 'just efter start ensamheten'],
+	[7222107, 591329, 409, 'slope', 'backen efter ensamheten'],
+	[7221914, 591411, 418, 'max', 'abborrtjärnsliden'],
+	[7221013, 591756, 433, 'max', 'luspberget'],
+	[7220295, 591943, 416, 'min', 'nymyran/kraftledningen'],
+	[7218778, 592187, 429, 'max', 'rismyran'],
+	[7217768, 592797, 409, 'min', 'östom sabotsliden'],
+	[7217115, 592967, 421, 'max', 'sabotsliden'],
+	[7215411, 593510, 417, 'min', 'hedevägen'],
+	[7215020, 593173, 428, 'slope', 'sätervallen'],
+	[7215286, 591736, 425, 'min', 'orrmyran'],
+	[7216067, 590629, 441, 'max', 'norrberg'],
+	[7216258, 590337, 434, 'slope', 'norrberg backe'],
+	[7218559, 586696, 432, 'min', 'vallträskvägen platt mot stortjärnliden'], // flat section
+	[7220666.25, 585482, 477.7, 'slope', 'stortjärnliden'],
+	[7219458, 586508, 447, 'slope', 'vallträskvägen backe mot stortjärnliden'],
+	[7221517.125, 584791.25, 494.81, 'max', 'inför korsning långängsvägen'],
+	[7221700.25, 584745.5, 487.51, 'slope', 'långängsvägskorsningen'],
+	[7222586.75, 584838, 493.38, 'slope', 'efter korsning långängsvägen'],
+	[7222820.375, 585070.25, 505.62, 'max', 'mot vallträskvägstoppen'],
+	[7222340, 583660, 518, 'slope', 'långängen bräntskallen'],
+	[7224444, 580183, 548, 'max', 'norditjärnarna/långängen'],
+	[7225191, 579767, 532, 'slope', 'sörmyran/långängen'],
+	[7226030.375, 579333.5, 505.4, 'min', 'bäcken från sörmyran långängen'],
+	[7226399, 579008, 503, 'slope', 'sollidenkojan/långhalsen'],
+	[7226632, 577417, 489, 'max', 'långhalsen'],
+	[7226550, 575605, 485, 'slope', 'volvoliden backe'],
+	[7227388, 575083, 506, 'max', 'volvoliden'],
+	[7227165, 573311, 464, 'slope', 'volvoliden mittemot brattåker'],
+	[7228855, 572859, 435, 'max', 'tjäderåsen'],
+	[7229204.875, 572772.25, 421.89, 'slope', 'långvattsdammen'],
+	[7230396, 569675, 427, 'max', 'ullisbäcken'],
+	[7229950, 570660, 414.5, 'min', 'bron över ullisbäcken'],
+	[7231059.875, 569205.75, 424.62, 'max', 'mot ullisjaur'],
+	[7230203.125, 569831.5, 421.69, 'slope', 'mot ullisjaur'],
+	[7232420.375, 568249.25, 419.17, 'min', 'mot ullisjaur'],
+	[7233922, 568040, 437, 'slope', 'luspeberget backe upp'],
+	[7234049, 568205, 443, 'max', 'luspeberget'],
+	[7233234, 570193, 415, 'slope', 'abborrtjärnheden'],
+	[7233849, 568981, 424, 'slope', 'vackerliden'],
+	[7232971, 571378, 415, 'max', 'garackberget'],
+	[7232863.375, 572988, 413.00, 'slope', 'vackerliden mot kungavägen'],
+	[7232063, 573594, 421, 'max', 'grotjaurmyran'],
+	[7232080.375, 575495.5, 405.53, 'min', 'baktisvägskälet'], // pretty flat along kungavägen
+	[7231270, 574801, 450, 'slope', 'baktisbacken'],
+	[7231077, 575788, 482, 'max', 'baktisvägen'],
+	[7230261, 577199, 497, 'slope', 'baktisbacken 2'],
+	[7229609, 577870, 515, 'max', 'rönntjärnsbäcken'],
+	[7229511, 578157, 518, 'slope', 'backe upp mot rönnliden'],
+	[7228140, 578549, 554, 'max', 'rönnliden'],
+	[7227308, 578804, 525, 'slope', 'rönnliden mot nederstmyran'],
+	[7227034, 578932, 519, 'min', 'nederstmyran'],
+	[7227774, 579815, 570, 'slope', 'backe mot kaskeluoktliden'],
+	[7227872.25, 580293.5, 601.94, 'max', 'mittlidmyran'],
+	[7227812.875, 580581.25, 592.13, 'min', 'mittlidmyran'],
+	[7227826.125, 580813.25, 606.11, 'slope', 'nära toppen'],
+	[7227604, 581423, 627.64, 'slope', 'nära toppen'],
+	[7227629.9375, 581530.125, 632.22, 'max', 'kaskeluoktliden'],
+	[7227645, 581986, 607, 'slope', 'nyängsvägen backe'],
+	[7227868, 584104, 513, 'slope', 'rullmyrvägen backe bergmyrhobben'],
+	[7228025, 583346, 539, 'max', 'bergmyran'],
+	[7229079, 582743, 453, 'max', 'innan tjädervinbäcken'],
+	[7230013, 580937, 435, 'slope', 'efter tjädervinbäcken'],
+	[7231188, 579078, 416, 'max', 'kungavägen mot stortjärnsvägen'],
+	[7231378, 578581, 405, 'slope', 'kungavägen mot stortjärnsvägen'],
+	[7232927, 577029, 389, 'max', 'harrtjärnen'],
+	[7233450.8125, 576509, 393.87, 'slope', 'brantbacken'],
+	[7233560, 576528, 405, 'max', 'levertjärnen'],
+	[7234215.3125, 576714.625, 391.99, 'min', 'västom fäbodberget'],
+	[7234475.375, 576880, 391.74, 'slope', 'västom fäbodberget'],
+	[7234938.875, 577822, 374.63, 'max', 'mot umstranden'],
+	[7234970, 578063, 367, 'slope', 'backe innan lill-harrbäcken'],
+	[7232424.4375, 579300.375, 352.99, 'min', 'harrbäckavan'],
+	[7232323, 579458, 360, 'slope', 'backe efter harrbäcken'],
+	[7233275, 579509, 380, 'max', 'umstranden'],
+	[7232037.75, 581233, 367.97, 'slope', 'backe ner mot sågavan'],
+	[7233718.6875, 582024.375, 359.97, 'slope', 'backen upp till kaskeluokt'],
+	[7233891, 582480, 371, 'max', 'kaskeluokt'],
+	[7233966.75, 583173.0, 360.28, 'slope', 'kaskeluokt mot hängbron'],
+	[7232339, 585651, 369, 'min', 'stormyran'],
+	[7231638, 585959, 380, 'max', 'anders-gustavsmyran'],
+	[7229220, 587017, 354, 'min', 'ormhalsen'],
+	[7228834, 586702, 368, 'max', 'kungavägen mot rullmyrsvägen'],
+	[7228284, 586678, 418, 'slope', 'rullmyrsklättringen'],
+	[7227414.125, 585753.5, 499.42, 'max', 'rullmyrsvägstoppen'],
+	[7227489.25, 584429.5, 495.72, 'slope', 'backen upp mot vallträsk'],
+	[7226580, 584320, 522, 'slope', 'backen upp mot vallträsk'],
+	[7225777.875, 584513.25, 556.53, 'slope', 'backen upp mot vallträsk'],
+	[7224744.375, 584619.25, 561.9, 'min', 'vallträsk'],
+	[7224004, 584880, 581, 'max', 'vallträsktoppen'],
+	[7223267, 585540, 524, 'slope', 'lillgobergetbacken'],
+	[7223693, 586028, 520, 'max', 'vallträsksvägstoppen'],
+	[7224599, 587494, 465, 'slope', 'backe mot rönnvik'],
+	[7224559, 590044, 387, 'max', 'mot rönnvik'],
+	[7223162, 591821, 360, 'min', 'ensamhetsvägskälet'],
+	[7222907, 591578, 381, 'slope', 'backen mot ensamheten'],
+    ]
+}
