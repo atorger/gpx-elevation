@@ -35,8 +35,7 @@ def main():
     parser.add_argument('--output', type=pathlib.Path, help='Name of output GPX file', default='output.gpx')
     parser.add_argument('--side_scan_dist', type=float, help='Limit of how far to the side of the track to find a point (on another track) and consider it to be a match', default=20.0)
     parser.add_argument('--sampling_step', type=float, help='Span in meters between each point a track is sampled', default=5.0)
-    parser.add_argument('--filter_width_fully_fixed', type=float, help='Filter width in meters for the lowpass filter applied before final output when there are enough provided fix points to fully fix the elevation profile', default=50.0)
-    parser.add_argument('--filter_width_estimated', type=float, help='Filter width in meters for the lowpass filter applied before final output when there is at least one estimated fix point', default=100.0)
+    parser.add_argument('--filter_width', type=float, help='Filter width in meters for the lowpass filter applied before final output', default=100.0)
 
     args = parser.parse_args()
 
@@ -89,7 +88,7 @@ def main():
         f = os.path.join(args.activities_dir, filename)
         if os.path.isfile(f):
             profile = ElevationProfile(f)
-            profile.set_reference_track(ref_track, fp_db, args.side_scan_dist, args.sampling_step)
+            profile.set_reference_track(ref_track, args.side_scan_dist, args.sampling_step)
             seg_count += profile.seg_count()
             if do_plot:
                 profile.write_plot_data(args.plot_dir)
@@ -100,17 +99,22 @@ def main():
             profiles.append(profile)
     seg_end = seg_count
 
-    did_apply_estimated = ElevationProfile.estimate_fixpoints_and_apply_corrections(profiles, fp_db, args.plot_dir)
+    did_apply_estimated = ElevationProfile.estimate_fixpoints_and_apply_corrections(profiles, args.plot_dir)
     if did_apply_estimated:
         seg_base = seg_count
         seg_end = seg_count*2-1
+
+    if len(fp_db) > 0:
+        print('Applying provided fix points')
+        for profile in profiles:
+            profile.apply_fixpoint_corrections(fp_db)
 
     if do_plot:
         for profile in profiles:
             profile.write_plot_data(args.plot_dir)
         plot_cmd = f"plot \
         for [IDX={seg_base}:{seg_end}] 'fp' index IDX u 1:2 with l lt IDX+1 lw 2 notitle, \
-        for [IDX={seg_base}:{seg_end}] 'cp' index IDX u 1:2 with l lt IDX+1 notitle"
+        for [IDX={seg_base}:{seg_end}] 'op' index IDX u 1:2 with l lt IDX+1 notitle"
         if len(fp_db) > 0:
             plot_cmd += ", 'fixpoints' w xerrorbars lc 'red' title 'provided fix points'"
         if did_apply_estimated:
@@ -139,11 +143,7 @@ def main():
             if start_dist is None:
                 start_dist = dist
 
-    if did_apply_estimated:
-        filter_width = args.filter_width_estimated
-    else:
-        filter_width = args.filter_width_fully_fixed
-    lowpass_profile = apply_lowpass_filter(profile, args.sampling_step / filter_width)
+    lowpass_profile = apply_lowpass_filter(profile, args.sampling_step / args.filter_width)
     if do_plot:
         with open(os.path.join(args.plot_dir, 'profile0'), 'w') as f:
             for idx, ele in enumerate(profile):
@@ -152,7 +152,7 @@ def main():
             for idx, ele in enumerate(lowpass_profile):
                 f.write(f'{start_dist+idx*args.sampling_step}, {ele}\n')
         plot_cmd = f"plot \
-        for [IDX={seg_base}:{seg_end}] 'cp' index IDX u 1:2 with l lt IDX+1 notitle, \
+        for [IDX={seg_base}:{seg_end}] 'op' index IDX u 1:2 with l lt IDX+1 notitle, \
         'profile1' w l lc rgb '#88333333' lw 4 title 'finished profile', \
         'profile0' w l lc rgb '#333333' title 'raw profile'"
         if len(fp_db) > 0:
@@ -190,7 +190,7 @@ def main():
                 ele = round(point[2], 1)
                 f.write(f'{dist}, {ele}\n')
         plot_cmd = f"plot \
-        for [IDX={seg_base}:{seg_end}] 'cp' index IDX u 1:2 with l lt IDX+1 notitle, \
+        for [IDX={seg_base}:{seg_end}] 'op' index IDX u 1:2 with l lt IDX+1 notitle, \
         'profile1' w l lc rgb '#88333333' lw 4 title 'finished profile', \
         'profile0' w l lc rgb '#333333' title 'raw profile', \
         'profile2' w l lc rgb '#000000' dashtype 2 title 'GPX stored profile'"

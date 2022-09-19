@@ -2,8 +2,10 @@
 {
     projection: 'epsg:3006', // SWEREF99 TM
     fix_points: [
+	[7215020, 593173, 428, 'slope', 'sätervallen'],
 	[7216067, 590629, 441, 'max', 'norrberg'],
 	[7227629.9375, 581530.125, 632.22, 'max', 'kaskeluoktliden'],
+	[7228284, 586678, 418, 'slope', 'rullmyrsklättringen'],
 	[7233560, 576528, 405, 'max', 'levertjärnen'],
 	[7224004, 584880, 581, 'max', 'vallträsktoppen'],
     ]

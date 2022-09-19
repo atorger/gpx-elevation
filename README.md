@@ -85,3 +85,8 @@ provide a json file with manually provided fix points. See provided example.
   activities. The fix-points.json contains LIDAR fix points for those tracks.
     - It's interesting to compare how close the results are with and without
       provided fix points.
+- The more we low pass filter the output the less elevation gain we will get, as the
+  small peaks/dips are smoothed out. A --filter_width of 50 meters seems to yield
+  elevation gain matching typical GPS altimeters, but requires very good horizontal
+  alignment. The default 100 meters is more conservative and will yield a bit lower
+  elevation gain, but minimizes false details.

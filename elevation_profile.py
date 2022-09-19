@@ -143,13 +143,10 @@ class TrackPoint:
 
 @dataclass
 class ProfileSegment:
-    start_dist: float
     profile: list
+    start_dist: float
+    end_dist: float
     lowpass_profile: list=None
-    vcorr_profile: list=None
-    hvcorr_profile: list=None
-    hvcorr_start_dist: float=None
-    hvcorr_end_dist: float=None
 
 class ElevationProfile:
 
@@ -230,7 +227,7 @@ class ElevationProfile:
         prominent_minmax_pos = []
         window_len = math.ceil(200.0 / self._sampling_step)
         last_pos = -window_len / 2
-        start_idx = round(ps.hvcorr_start_dist / self._sampling_step)
+        start_idx = round(ps.start_dist / self._sampling_step)
         for idx, (pos, minmax) in enumerate(minmax_pos):
             if idx < len(minmax_pos) - 1:
                 next_pos = minmax_pos[idx+1][0]
@@ -258,7 +255,7 @@ class ElevationProfile:
                 continue
             corr = fp.elevation - pr[idx]
             idx += ps.start_dist / sampling_step
-            fp_minmax_pos_list.append((idx, corr, fp))
+            fp_minmax_pos_list.append((idx, corr, fp, ps))
         return fp_minmax_pos_list
 
     @staticmethod
@@ -269,71 +266,70 @@ class ElevationProfile:
             fp = next(iter(fpset))
             if fp.fixtype != 'slope':
                 continue
-            match = get_best_match_for_slope_fix(ref_track, ps.start_dist, ps.vcorr_profile, sampling_step, fp, 100.0)
+            match = get_best_match_for_slope_fix(ref_track, ps.start_dist, ps.profile, sampling_step, fp, 100.0)
             if match is None:
                 continue
-            fp_horiz_pos_list.append((match[0] + start_idx, match[1], fp))
+            fp_horiz_pos_list.append((match[0] + start_idx, match[1], fp, ps))
         return fp_horiz_pos_list
 
-    def _apply_hcorr(self):
+    def _apply_hcorr(self, hcorr):
+        if hcorr is None:
+            return
         for ps in self._profile_segments:
             start_idx = int(ps.start_dist / self._sampling_step)
-            if self._hcorr is None:
-                ps.hvcorr_start_dist = ps.start_dist
-                ps.hvcorr_profile = ps.vcorr_profile
-            else:
-                ps.hvcorr_start_dist = ps.start_dist - self._hcorr[start_idx]
-                ps.hvcorr_profile = []
-                idx = start_idx
-                while True:
-                    if idx < len(self._hcorr)-1:
-                        corr = self._hcorr[idx]
+            hvcorr_start_dist = ps.start_dist - hcorr[start_idx]
+            hvcorr_profile = []
+            idx = start_idx
+            while True:
+                if idx < len(hcorr)-1:
+                    corr = hcorr[idx]
+                else:
+                    corr = hcorr[-1]
+                dist = (idx-start_idx) * self._sampling_step + corr + (hvcorr_start_dist - ps.start_dist)
+                if dist >= 0:
+                    idx0 = math.floor(dist / self._sampling_step)
+                    if idx0 > len(ps.profile) - 1:
+                        break
+                    mix = (dist % self._sampling_step) / self._sampling_step
+                    if mix == 0:
+                        ele = ps.profile[idx0]
                     else:
-                        corr = self._hcorr[-1]
-                    dist = (idx-start_idx) * self._sampling_step + corr + (ps.hvcorr_start_dist - ps.start_dist)
-                    if dist >= 0:
-                        idx0 = math.floor(dist / self._sampling_step)
-                        if idx0 > len(ps.vcorr_profile) - 1:
+                        if idx0 > len(ps.profile) - 2:
                             break
-                        mix = (dist % self._sampling_step) / self._sampling_step
-                        if mix == 0:
-                            ele = ps.vcorr_profile[idx0]
-                        else:
-                            if idx0 > len(ps.vcorr_profile) - 2:
-                                break
-                            ele = ps.vcorr_profile[idx0] * (1 - mix) + ps.vcorr_profile[idx0+1] * mix
-                        ps.hvcorr_profile.append(ele)
-                    idx += 1
-            ps.hvcorr_end_dist = ps.hvcorr_start_dist + len(ps.hvcorr_profile) * self._sampling_step
+                        ele = ps.profile[idx0] * (1 - mix) + ps.profile[idx0+1] * mix
+                    hvcorr_profile.append(ele)
+                idx += 1
+            ps.profile = hvcorr_profile
+            ps.start_dist = hvcorr_start_dist
+            ps.end_dist = ps.start_dist + len(ps.profile) * self._sampling_step
+
+    def _apply_vcorr(self, vcorr):
+        if vcorr is None:
+            return
+        for ps in self._profile_segments:
+            vcorr_profile = []
+            start_idx = round(ps.start_dist / self._sampling_step)
+            for idx, ele in enumerate(ps.profile):
+                vidx = min(start_idx + idx, len(vcorr) - 1)
+                vcorr_profile.append(ele + vcorr[vidx])
+            ps.profile = vcorr_profile
 
     def _calculate_lowpass_profiles(self):
         for ps in self._profile_segments:
-            ps.lowpass_profile = apply_lowpass_filter(ps.hvcorr_profile, self._sampling_step / 300.0)
+            ps.lowpass_profile = apply_lowpass_filter(ps.profile, self._sampling_step / 300.0)
 
             # One can make useful analysis with profile gradient, for example horizontal alignment, however
             # got good enough results without it so not used for now
             #x = np.array(ps.lowpass_profile, dtype=float)
             #ps.gradient = list(np.gradient(x))
 
-    def _apply_vcorr(self):
-        for ps in self._profile_segments:
-            if self._vcorr is None:
-                ps.vcorr_profile = ps.profile
-                continue
-            ps.vcorr_profile = []
-            start_idx = round(ps.start_dist / self._sampling_step)
-            for idx, ele in enumerate(ps.profile):
-                ps.vcorr_profile.append(ele + self._vcorr[start_idx + idx])
-
-    def set_reference_track(self, ref_track, fp_db, side_scan_dist, sampling_step):
+    def set_reference_track(self, ref_track, side_scan_dist, sampling_step):
 
         print('Making profile for reference track')
 
         self._sampling_step = sampling_step
         self._ref_track = ref_track
         self._side_scan_dist = side_scan_dist
-        self._vcorr = None
-        self._hcorr = None
 
         if ref_track.utm_epsg_name() != self._epsg_name:
             # rare case, need to reproject track and track_db
@@ -378,10 +374,8 @@ class ElevationProfile:
         profile_segs = joined_profile_segs
 
         self._profile_segments = []
-        fp_minmax_pos_list = []
         for profile_segment in profile_segs:
-            ps = ProfileSegment(profile_segment[0], profile_segment[1])
-
+            ps = ProfileSegment(profile_segment[1], profile_segment[0], -1)
             edge_remove_count = math.floor(200.0 / self._sampling_step)
             if ps.start_dist > 0:
                 ps.start_dist += edge_remove_count * self._sampling_step
@@ -394,28 +388,10 @@ class ElevationProfile:
                 continue
 
             ps.profile = apply_lowpass_filter(ps.profile, self._sampling_step / 20.0)
+            ps.end_dist = ps.start_dist + len(ps.profile) * self._sampling_step
+
             self._profile_segments.append(ps)
 
-            fp_minmax_pos_list += ElevationProfile._match_minmax_fixpoints(ps, fp_db, self._ref_track, self._sampling_step)
-
-        fp_minmax_pos_list = sorted(fp_minmax_pos_list, key=lambda x: x[0])
-        for match in fp_minmax_pos_list:
-            print(f'dist={round(ps.start_dist + match[0] * self._sampling_step, 1)} elevation difference={round(match[1], 1)} name={match[2].name}')
-
-        self._vcorr = generate_correction_curve(fp_minmax_pos_list, self._ref_track.distance(), self._sampling_step)
-        self._apply_vcorr()
-
-        fp_horiz_pos_list = []
-        for ps in self._profile_segments:
-            fp_horiz_pos_list += ElevationProfile._match_slope_fixpoints(ps, fp_db, self._ref_track, self._sampling_step)
-
-        fp_horiz_pos_list = sorted(fp_horiz_pos_list, key=lambda x: x[0])
-        for match in fp_horiz_pos_list:
-            fp = match[2]
-            print(f'dist={round(ps.start_dist + match[0] * self._sampling_step,1)} elevation={round(fp.elevation,1)} horizontal distance to fix={round(match[1],1)} name={fp.name}')
-
-        self._hcorr = generate_correction_curve(fp_horiz_pos_list, self._ref_track.distance(), self._sampling_step)
-        self._apply_hcorr()
         self._calculate_lowpass_profiles()
 
     def _get_elevation(self, ref_track_dist):
@@ -467,14 +443,14 @@ class ElevationProfile:
         d = ref_track_dist
         match = None
         for ps in self._profile_segments:
-            if ps.hvcorr_start_dist <= d < ps.hvcorr_end_dist:
+            if ps.start_dist <= d < ps.end_dist:
                 match = ps
                 break
         if match is None:
             return None
         ps = match
         sampled_profile = get_sampled_profile(ps)
-        d -= ps.hvcorr_start_dist
+        d -= ps.start_dist
         idx = math.floor(d / self._sampling_step)
         mix = (d - idx * self._sampling_step) / self._sampling_step
         val1 = sampled_profile[idx]
@@ -484,10 +460,40 @@ class ElevationProfile:
         return val1
 
     def get_elevation(self, ref_track_dist):
-        return self._get_datapoint(lambda ps: ps.hvcorr_profile, ref_track_dist)
+        return self._get_datapoint(lambda ps: ps.profile, ref_track_dist)
 
     def seg_count(self):
         return len(self._profile_segments)
+
+    def apply_fixpoint_corrections(self, fp_db):
+        if len(fp_db) == 0:
+            return
+
+        fp_minmax_pos_list = []
+        for ps in self._profile_segments:
+            fp_minmax_pos_list += ElevationProfile._match_minmax_fixpoints(ps, fp_db, self._ref_track, self._sampling_step)
+        fp_minmax_pos_list = sorted(fp_minmax_pos_list, key=lambda x: x[0])
+        for match in fp_minmax_pos_list:
+            ps = match[3]
+            fp = match[2]
+            print(f'dist={round(ps.start_dist + match[0] * self._sampling_step, 1)} elevation difference={round(match[1], 1)} name={fp.name}')
+
+        vcorr = generate_correction_curve(fp_minmax_pos_list, self._ref_track.distance(), self._sampling_step)
+        self._apply_vcorr(vcorr)
+
+        fp_horiz_pos_list = []
+        for ps in self._profile_segments:
+            fp_horiz_pos_list += ElevationProfile._match_slope_fixpoints(ps, fp_db, self._ref_track, self._sampling_step)
+
+        fp_horiz_pos_list = sorted(fp_horiz_pos_list, key=lambda x: x[0])
+        for match in fp_horiz_pos_list:
+            ps = match[3]
+            fp = match[2]
+            print(f'dist={round(ps.start_dist + match[0] * self._sampling_step,1)} elevation={round(fp.elevation,1)} horizontal distance to fix={round(match[1],1)} name={fp.name}')
+
+        hcorr = generate_correction_curve(fp_horiz_pos_list, self._ref_track.distance(), self._sampling_step)
+        self._apply_hcorr(hcorr)
+        self._calculate_lowpass_profiles()
 
     @staticmethod
     def close_plot_files():
@@ -498,43 +504,21 @@ class ElevationProfile:
     def _open_plot_files(plot_dir):
         if len(ElevationProfile._plot_files) > 0:
             return
-        names = ['op', 'vc', 'hc', 'vp', 'cp', 'fp']
+        names = ['op', 'fp']
         for name in names:
             ElevationProfile._plot_files[name] = open(os.path.join(plot_dir, name), 'w')
 
     def write_plot_data(self, plot_dir):
         ElevationProfile._open_plot_files(plot_dir)
-        if self._vcorr is not None:
-            f = ElevationProfile._plot_files['vc']
-            for idx, val in enumerate(self._vcorr):
-                f.write(f'{idx*self._sampling_step}, {val}\n')
-            f.write('\n\n')
-            f.flush()
-        if self._hcorr is not None:
-            f = ElevationProfile._plot_files['hc']
-            for idx, val in enumerate(self._hcorr):
-                f.write(f'{idx*self._sampling_step}, {val}\n')
-            f.write('\n\n')
-            f.flush()
         for ps in self._profile_segments:
             f = ElevationProfile._plot_files['op']
             for idx, ele in enumerate(ps.profile):
                 f.write(f'{ps.start_dist+idx*self._sampling_step}, {ele}\n')
             f.write('\n\n')
             f.flush()
-            f = ElevationProfile._plot_files['vp']
-            for idx, ele in enumerate(ps.vcorr_profile):
-                f.write(f'{ps.start_dist+idx*self._sampling_step}, {ele}\n')
-            f.write('\n\n')
-            f.flush()
-            f = ElevationProfile._plot_files['cp']
-            for idx, ele in enumerate(ps.hvcorr_profile):
-                f.write(f'{ps.hvcorr_start_dist+idx*self._sampling_step}, {ele}\n')
-            f.write('\n\n')
-            f.flush()
             f = ElevationProfile._plot_files['fp']
             for idx, ele in enumerate(ps.lowpass_profile):
-                f.write(f'{ps.hvcorr_start_dist+idx*self._sampling_step}, {ele}\n')
+                f.write(f'{ps.start_dist+idx*self._sampling_step}, {ele}\n')
             f.write('\n\n')
             f.flush()
 
@@ -609,7 +593,7 @@ class ElevationProfile:
         return minmax_values
 
     @staticmethod
-    def estimate_fixpoints_and_apply_corrections(profiles, provided_fp_db, plot_dir=None):
+    def estimate_fixpoints_and_apply_corrections(profiles, plot_dir=None):
         ref_track = profiles[0]._ref_track
         sampling_step = profiles[0]._sampling_step
 
@@ -624,23 +608,10 @@ class ElevationProfile:
         sorted_values = ElevationProfile._sort_point_clusters(clustered_mmpos, min_dist_between_fixpoints, vspan, processed_set)
         print(sorted_values)
 
-        provided_fp_positions = SortedDict()
-        for fpset in provided_fp_db:
-            fp = next(iter(fpset))
-            point = ref_track.get_nearest_perpendicular_point(fp, profiles[0]._side_scan_dist)
-            if point is not None:
-                idx = point.dist / sampling_step
-                provided_fp_positions[idx] = True
-
         spaced_out_values = []
         picked_points = SortedDict()
         for val in sorted_values:
             mid_idx = val[0]
-
-            # use extra distance from provided fixpoints
-            closest_idx = find_closest(provided_fp_positions, mid_idx)
-            if closest_idx is not None and abs(closest_idx - mid_idx) < 2 * min_dist_between_fixpoints:
-                continue
 
             closest_idx = find_closest(picked_points, mid_idx)
             if closest_idx is not None and abs(closest_idx - mid_idx) < min_dist_between_fixpoints:
@@ -673,9 +644,6 @@ class ElevationProfile:
             fp_minmax_pos_list = []
             fp_horiz_pos_list = []
             for ps in profile._profile_segments:
-                fp_minmax_pos_list += ElevationProfile._match_minmax_fixpoints(ps, provided_fp_db, ref_track, profile._sampling_step)
-                fp_horiz_pos_list += ElevationProfile._match_slope_fixpoints(ps, provided_fp_db, ref_track, profile._sampling_step)
-
                 mmlist = ElevationProfile._match_minmax_fixpoints(ps, fp_db, ref_track, profile._sampling_step, lowpass=True)
                 fp_minmax_pos_list += mmlist
 
@@ -689,9 +657,9 @@ class ElevationProfile:
             fp_horiz_pos_list = sorted(fp_horiz_pos_list, key=lambda x: x[0])
             #print(list(map(lambda i: (i[0], i[1]), fp_minmax_pos_list)))
             #print(list(map(lambda i: (i[0], i[1]), fp_horiz_pos_list)))
-            profile._vcorr = generate_correction_curve(fp_minmax_pos_list, ref_track.distance(), profile._sampling_step)
-            profile._hcorr = generate_correction_curve(fp_horiz_pos_list, ref_track.distance(), profile._sampling_step)
-            ElevationProfile._apply_vcorr(profile)
-            ElevationProfile._apply_hcorr(profile)
+            vcorr = generate_correction_curve(fp_minmax_pos_list, ref_track.distance(), profile._sampling_step)
+            hcorr = generate_correction_curve(fp_horiz_pos_list, ref_track.distance(), profile._sampling_step)
+            ElevationProfile._apply_vcorr(profile, vcorr)
+            ElevationProfile._apply_hcorr(profile, hcorr)
             ElevationProfile._calculate_lowpass_profiles(profile)
         return True

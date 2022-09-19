@@ -2,8 +2,8 @@ import math
 import statistics
 import re
 import os
-import numpy as np
 import csv
+import numpy as np
 from shapely import geometry
 from itertools import islice
 from sortedcontainers import SortedDict
