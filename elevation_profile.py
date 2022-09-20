@@ -240,7 +240,7 @@ class ElevationProfile:
         return prominent_minmax_pos
 
     @staticmethod
-    def _match_minmax_fixpoints(ps, fp_db, ref_track, sampling_step, lowpass=False):
+    def _match_minmax_fixpoints(ps, fp_db, ref_track, window_len, sampling_step, lowpass=False):
         fp_minmax_pos_list = []
         if lowpass:
             pr = ps.lowpass_profile
@@ -250,7 +250,7 @@ class ElevationProfile:
             fp = next(iter(fpset))
             if fp.fixtype not in ('max', 'min'):
                 continue
-            idx = get_best_match_for_minmax_fix(ref_track, ps.start_dist, pr, sampling_step, fp, 100.0)
+            idx = get_best_match_for_minmax_fix(ref_track, ps.start_dist, pr, sampling_step, fp, window_len/2)
             if idx is None:
                 continue
             corr = fp.elevation - pr[idx]
@@ -259,14 +259,14 @@ class ElevationProfile:
         return fp_minmax_pos_list
 
     @staticmethod
-    def _match_slope_fixpoints(ps, fp_db, ref_track, sampling_step):
+    def _match_slope_fixpoints(ps, fp_db, ref_track, window_len, sampling_step):
         fp_horiz_pos_list = []
         start_idx = ps.start_dist / sampling_step
         for fpset in fp_db:
             fp = next(iter(fpset))
             if fp.fixtype != 'slope':
                 continue
-            match = get_best_match_for_slope_fix(ref_track, ps.start_dist, ps.profile, sampling_step, fp, 100.0)
+            match = get_best_match_for_slope_fix(ref_track, ps.start_dist, ps.profile, sampling_step, fp, window_len/2)
             if match is None:
                 continue
             fp_horiz_pos_list.append((match[0] + start_idx, match[1], fp, ps))
@@ -323,7 +323,7 @@ class ElevationProfile:
             #x = np.array(ps.lowpass_profile, dtype=float)
             #ps.gradient = list(np.gradient(x))
 
-    def set_reference_track(self, ref_track, side_scan_dist, sampling_step):
+    def set_reference_track(self, ref_track, side_scan_dist, edge_remove_len, sampling_step):
 
         print('Making profile for reference track')
 
@@ -376,17 +376,25 @@ class ElevationProfile:
         self._profile_segments = []
         for profile_segment in profile_segs:
             ps = ProfileSegment(profile_segment[1], profile_segment[0], -1)
-            edge_remove_count = math.floor(200.0 / self._sampling_step)
-            if ps.start_dist > 0:
-                ps.start_dist += edge_remove_count * self._sampling_step
-                ps.profile = ps.profile[edge_remove_count:]
-            end_dist = ps.start_dist + len(ps.profile) * self._sampling_step
-            if end_dist < profile[-1][0]:
-                ps.profile = ps.profile[:-edge_remove_count]
+
+            # Remove edges of segments that don't start or end at the track's start or end.
+            # The reason for this is that there is quite often elevation deviations where
+            # the track leaves the reference track (=goes onto a different road) and thus
+            # causes and end/start of segment.
+            if edge_remove_len > 0:
+                edge_remove_count = math.floor(edge_remove_len / self._sampling_step)
+                if ps.start_dist > 0:
+                    ps.start_dist += edge_remove_count * self._sampling_step
+                    ps.profile = ps.profile[edge_remove_count:]
+                end_dist = ps.start_dist + len(ps.profile) * self._sampling_step
+                if end_dist < profile[-1][0]:
+                    ps.profile = ps.profile[:-edge_remove_count]
 
             if len(ps.profile) < 2:
                 continue
 
+            # We apply some minimal low pass filtering of the input, as more details than
+            # this is most likely just noise that will disturb the matching process.
             ps.profile = apply_lowpass_filter(ps.profile, self._sampling_step / 20.0)
             ps.end_dist = ps.start_dist + len(ps.profile) * self._sampling_step
 
@@ -465,13 +473,13 @@ class ElevationProfile:
     def seg_count(self):
         return len(self._profile_segments)
 
-    def apply_fixpoint_corrections(self, fp_db):
+    def apply_fixpoint_corrections(self, fp_db, window_length):
         if len(fp_db) == 0:
             return
 
         fp_minmax_pos_list = []
         for ps in self._profile_segments:
-            fp_minmax_pos_list += ElevationProfile._match_minmax_fixpoints(ps, fp_db, self._ref_track, self._sampling_step)
+            fp_minmax_pos_list += ElevationProfile._match_minmax_fixpoints(ps, fp_db, self._ref_track, window_length, self._sampling_step)
         fp_minmax_pos_list = sorted(fp_minmax_pos_list, key=lambda x: x[0])
         for match in fp_minmax_pos_list:
             ps = match[3]
@@ -483,7 +491,7 @@ class ElevationProfile:
 
         fp_horiz_pos_list = []
         for ps in self._profile_segments:
-            fp_horiz_pos_list += ElevationProfile._match_slope_fixpoints(ps, fp_db, self._ref_track, self._sampling_step)
+            fp_horiz_pos_list += ElevationProfile._match_slope_fixpoints(ps, fp_db, self._ref_track, window_length, self._sampling_step)
 
         fp_horiz_pos_list = sorted(fp_horiz_pos_list, key=lambda x: x[0])
         for match in fp_horiz_pos_list:
@@ -595,19 +603,18 @@ class ElevationProfile:
         return minmax_values
 
     @staticmethod
-    def estimate_fixpoints_and_apply_corrections(profiles, plot_dir=None):
+    def estimate_fixpoints_and_apply_corrections(profiles, window_length, plot_dir=None):
         ref_track = profiles[0]._ref_track
         sampling_step = profiles[0]._sampling_step
 
-        min_dist_between_fixpoints = math.ceil(1500.0 / sampling_step)
-        window_length = math.ceil(200.0 / sampling_step)
+        min_dist_between_fixpoints = math.ceil(8 * window_length / sampling_step)
+        window_length_for_clusters = math.ceil(window_length / sampling_step)
         processed_set = SortedDict()
 
         mmpos = ElevationProfile._index_local_minmax_points(profiles)
-        clustered_mmpos = ElevationProfile._make_point_clusters(mmpos, window_length)
+        clustered_mmpos = ElevationProfile._make_point_clusters(mmpos, window_length_for_clusters)
 
         sorted_values = ElevationProfile._sort_point_clusters(clustered_mmpos, min_dist_between_fixpoints, processed_set)
-        print(sorted_values)
 
         spaced_out_values = []
         picked_points = SortedDict()
@@ -645,7 +652,7 @@ class ElevationProfile:
             fp_minmax_pos_list = []
             fp_horiz_pos_list = []
             for ps in profile._profile_segments:
-                mmlist = ElevationProfile._match_minmax_fixpoints(ps, fp_db, ref_track, profile._sampling_step, lowpass=True)
+                mmlist = ElevationProfile._match_minmax_fixpoints(ps, fp_db, ref_track, window_length, profile._sampling_step, lowpass=True)
                 fp_minmax_pos_list += mmlist
 
                 for val in mmlist:

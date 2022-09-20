@@ -33,8 +33,10 @@ def main():
     parser.add_argument('--fix_points', type=pathlib.Path, help='Path to JSON file containing provided fix points.')
     parser.add_argument('--plot_dir', type=pathlib.Path, help='Directory to store plot files suitable for gnuplot, and will also activiate plotting during the run.')
     parser.add_argument('--output', type=pathlib.Path, help='Name of output GPX file. Default: output.gpx', default='output.gpx')
-    parser.add_argument('--side_scan_dist', type=float, help='Limit of how far to the side of the track in meters to find a point (on another track) and consider it to be a match. Default: 20', default=20.0)
     parser.add_argument('--sampling_step', type=float, help='Span in meters between each point a track is sampled. Default: 5', default=5.0)
+    parser.add_argument('--side_scan_dist', type=float, help='Limit of how far to the side of the track in meters to find a point (on another track) and consider it to be a match. Default: 20', default=20.0)
+    parser.add_argument('--edge_remove_length', type=float, help='How many meters to remove of the start and end of a segments that only partially covers the reference track. Default: 200', default=200)
+    parser.add_argument('--fixpoint_window_length', type=float, help='How wide window in meters to look beside a fix point to find a matching min/max/slope in a recorded activity. Default: 200', default=200)
     parser.add_argument('--filter_width', type=float, help='Filter width in meters for the lowpass filter applied before final output. Default: 100', default=100.0)
     parser.add_argument('--simplify_max_error', type=float, help='Maximum error in meters that may be introduced when simplifying (reducing number of points) in the final GPX, this applies in 3D. Default: 0.15', default=0.15)
 
@@ -89,7 +91,7 @@ def main():
         f = os.path.join(args.activities_dir, filename)
         if os.path.isfile(f):
             profile = ElevationProfile(f)
-            profile.set_reference_track(ref_track, args.side_scan_dist, args.sampling_step)
+            profile.set_reference_track(ref_track, args.side_scan_dist, args.edge_remove_length, args.sampling_step)
             seg_count += profile.seg_count()
             if do_plot:
                 profile.write_plot_data(args.plot_dir)
@@ -100,7 +102,7 @@ def main():
             profiles.append(profile)
     seg_end = seg_count
 
-    did_apply_estimated = ElevationProfile.estimate_fixpoints_and_apply_corrections(profiles, args.plot_dir)
+    did_apply_estimated = ElevationProfile.estimate_fixpoints_and_apply_corrections(profiles, args.fixpoint_window_length, args.plot_dir)
     if did_apply_estimated:
         seg_base = seg_count
         seg_end = seg_count*2-1
@@ -108,7 +110,7 @@ def main():
     if len(fp_db) > 0:
         print('Applying provided fix points')
         for profile in profiles:
-            profile.apply_fixpoint_corrections(fp_db)
+            profile.apply_fixpoint_corrections(fp_db, args.fixpoint_window_length)
 
     if do_plot:
         for profile in profiles:
