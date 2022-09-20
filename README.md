@@ -40,11 +40,18 @@ For the test data when making this script the following behavior of used GPS dev
    - Vertical drift of absolute value of +/- 30 meters or so seems typical
    - Horizontal drift (lag in altimeter?) seems to be quite significant (up to 100 meters),
      requiring horizontal alignment too.
-- Many of the modern GPS devices seems to have *some* understanding of absolute altitude,
-  maybe by querying an elevation database via mobile phone connection?
-   - To be able to derive a reasonable absolute elevation it's required that a majority
-     of the recorded activtities is somewhat near the correct absolute altitude (+/-30
-     meters or so.
+- Many of the modern GPS devices have some understanding of absolute altitude. The term
+  "DEM calibration" is thrown around among manufacturers which means that the altimeter
+  is calibrated against a database (Digital Elevation Model) of elevations. The resolution
+  of this and if it's available on the device or requires internet connection via mobile
+  probably varies.
+   - For this software to be able to derive a reasonable absolute elevation it's required
+     that a majority of the recorded activtities is somewhat near the correct absolute
+     altitude (+/-30 meters or so), which indeed seems to be the case if the devices are
+     "typical GPS bike computers".
+   - Clearly from the test data, there are still some recording activities that have
+     their absolute altitude way off, while making a valuable contribution in terms
+     of relative elevation differences.
 
 The script expects provided actvitites to be recorded by devices that behave this way.
 
