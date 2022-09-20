@@ -11,6 +11,10 @@ with GPS devices equipped with a barometric altimeter.
 
 This is only a proof of concept, not much tested.
 
+![alt text](img/plot1.png "The raw activities without correction, matched to reference track")
+
+![alt text](img/plot2.png "Activities corrected and derived clustered average profile")
+
 ## How to run
 
 With fix points and plotting of results:
