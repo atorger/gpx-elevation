@@ -559,7 +559,9 @@ class ElevationProfile:
         return clustered_mmpos
 
     @staticmethod
-    def _sort_point_clusters(clustered_mmpos, min_dist_between_fixpoints, small_span, processed_set):
+    def _sort_point_clusters(clustered_mmpos, min_dist_between_fixpoints, processed_set):
+        vertical_span = 12.0
+        horizontal_spans = [30, 60, 120]
         minmax_values = []
         for idx, items in clustered_mmpos.items():
             closest_idx = find_closest(processed_set, idx)
@@ -567,15 +569,15 @@ class ElevationProfile:
                 continue
             minmax = items[0][1]
             eles = [i[2] for i in items]
-            val, count, span = get_clustered_average(eles, spans=[small_span])
+            val, count, span = get_clustered_average(eles, [vertical_span])
             if count == 1:
                 continue
             idxs = [i[0] for i in items]
-            mid_idx, _, _ = get_clustered_average(idxs, spans=[30, 60, 120])
+            mid_idx, _, _ = get_clustered_average(idxs, horizontal_spans)
             minmax_values.append((mid_idx, minmax, val, count, span, idx))
 
         def cmp_minmax(a, b):
-            if a[4] <= small_span and b[4] <= small_span:
+            if a[4] <= vertical_span and b[4] <= vertical_span:
                 if a[1] != b[1]:
                     # prefer max over min
                     if a[1] == 'max':
@@ -597,7 +599,6 @@ class ElevationProfile:
         ref_track = profiles[0]._ref_track
         sampling_step = profiles[0]._sampling_step
 
-        vspan = 12.0
         min_dist_between_fixpoints = math.ceil(1500.0 / sampling_step)
         window_length = math.ceil(200.0 / sampling_step)
         processed_set = SortedDict()
@@ -605,7 +606,7 @@ class ElevationProfile:
         mmpos = ElevationProfile._index_local_minmax_points(profiles)
         clustered_mmpos = ElevationProfile._make_point_clusters(mmpos, window_length)
 
-        sorted_values = ElevationProfile._sort_point_clusters(clustered_mmpos, min_dist_between_fixpoints, vspan, processed_set)
+        sorted_values = ElevationProfile._sort_point_clusters(clustered_mmpos, min_dist_between_fixpoints, processed_set)
         print(sorted_values)
 
         spaced_out_values = []

@@ -3,11 +3,12 @@ import statistics
 import re
 import os
 import csv
+from itertools import islice
+from dataclasses import dataclass
+
 import numpy as np
 from shapely import geometry
-from itertools import islice
 from sortedcontainers import SortedDict
-from dataclasses import dataclass
 import scipy.signal
 import gpxpy
 import gpxpy.gpx

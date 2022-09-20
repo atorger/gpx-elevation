@@ -28,14 +28,15 @@ def get_elevation(dist, profiles):
 def main():
 
     parser = argparse.ArgumentParser(description='Derive elevation for a GPX track by averaging elevation from recorded GPX activities')
-    parser.add_argument('--track', type=pathlib.Path, help='Reference track to calculate elevation profile for', required=True)
-    parser.add_argument('--activities_dir', type=pathlib.Path, help='Path to directory with recorded activities in GPX or CSV format', required=True)
-    parser.add_argument('--fix_points', type=pathlib.Path, help='Path to JSON file containing provided fix points')
-    parser.add_argument('--plot_dir', type=pathlib.Path, help='Directory to store plot files suitable for gnuplot, and will also activiate plotting during the run')
-    parser.add_argument('--output', type=pathlib.Path, help='Name of output GPX file', default='output.gpx')
-    parser.add_argument('--side_scan_dist', type=float, help='Limit of how far to the side of the track to find a point (on another track) and consider it to be a match', default=20.0)
-    parser.add_argument('--sampling_step', type=float, help='Span in meters between each point a track is sampled', default=5.0)
-    parser.add_argument('--filter_width', type=float, help='Filter width in meters for the lowpass filter applied before final output', default=100.0)
+    parser.add_argument('--track', type=pathlib.Path, help='Reference track to calculate elevation profile for.', required=True)
+    parser.add_argument('--activities_dir', type=pathlib.Path, help='Path to directory with recorded activities in GPX or CSV format.', required=True)
+    parser.add_argument('--fix_points', type=pathlib.Path, help='Path to JSON file containing provided fix points.')
+    parser.add_argument('--plot_dir', type=pathlib.Path, help='Directory to store plot files suitable for gnuplot, and will also activiate plotting during the run.')
+    parser.add_argument('--output', type=pathlib.Path, help='Name of output GPX file. Default: output.gpx', default='output.gpx')
+    parser.add_argument('--side_scan_dist', type=float, help='Limit of how far to the side of the track in meters to find a point (on another track) and consider it to be a match. Default: 20', default=20.0)
+    parser.add_argument('--sampling_step', type=float, help='Span in meters between each point a track is sampled. Default: 5', default=5.0)
+    parser.add_argument('--filter_width', type=float, help='Filter width in meters for the lowpass filter applied before final output. Default: 100', default=100.0)
+    parser.add_argument('--simplify_max_error', type=float, help='Maximum error in meters that may be introduced when simplifying (reducing number of points) in the final GPX, this applies in 3D. Default: 0.15', default=0.15)
 
     args = parser.parse_args()
 
@@ -177,7 +178,7 @@ def main():
             distmap[(tp.x, tp.y, ele)] = tp.dist
 
     print('Simplify the 3D polyline')
-    rdp_result = rdp(rdp_list, epsilon=0.15)
+    rdp_result = rdp(rdp_list, epsilon=args.simplify_max_error)
     print(f'Reduced number of points from {len(ref_track)} to {len(rdp_result)}')
 
     elevation_gain = calculate_elevation_gain(rdp_result, lambda x: x[2])
